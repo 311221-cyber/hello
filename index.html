@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>旅遊景點收藏</title>
+  <script>
+    // 這裡維持你的 Google Apps Script 正式網址
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw-WI564ciHYGJhe0veysgc1U9wPBbkRDZwjVII_XwgIinRki6LSH4DKiD9eTIyOClMkQ/execㄕ";
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      background-color: #f4f7f6;
+      color: #263238;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #f4f7f6;
+      padding: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 520px;
+      background: #ffffff;
+      border-radius: 18px;
+      box-shadow: 0 18px 40px rgba(39, 62, 75, 0.08);
+      padding: 32px;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: 1.8rem;
+      letter-spacing: 0.02em;
+    }
+
+    p.description {
+      margin: 0 0 28px;
+      color: #556268;
+      line-height: 1.6;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+      color: #455a64;
+    }
+
+    input,
+    button,
+    .status-box {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid #d9e2e5;
+      font-size: 1rem;
+      padding: 14px 16px;
+      outline: none;
+    }
+
+    input {
+      background: #fcfeff;
+      margin-bottom: 20px;
+    }
+
+    .status-box {
+      min-height: 80px; /* 縮減高度，看起來更精緻 */
+      background: #f8fbfa;
+      color: #2f4858;
+      line-height: 1.7;
+      display: flex;
+      align-items: center;
+    }
+
+    button {
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      transition: background 150ms ease, opacity 150ms ease;
+      margin-bottom: 16px;
+    }
+
+    button#query-btn, button#submit-btn {
+      background: #1a73e8;
+      color: #ffffff;
+    }
+
+    button:disabled {
+      background: #c7cbd1;
+      color: #6c7680;
+      cursor: not-allowed;
+      opacity: 0.95;
+    }
+
+    .footer {
+      margin-top: 18px;
+      font-size: 0.9rem;
+      color: #627179;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>旅遊景點收藏</h1>
+    <p class="description">請先輸入城市並查詢天氣，確認後再新增你想收藏的景點。</p>
+
+    <label for="city-input">城市</label>
+    <input id="city-input" type="text" placeholder="輸入城市名稱，例如 Taipei" />
+    <button id="query-btn" type="button">查詢天氣</button>
+
+    <label for="weather-info">天氣資訊</label>
+    <div id="weather-info" class="status-box">請先查詢城市天氣。</div>
+
+    <label for="spot-input">景點名稱</label>
+    <input id="spot-input" type="text" placeholder="輸入景點名稱" disabled />
+    <button id="submit-btn" type="button" disabled>儲存收藏</button>
+
+    <div class="footer">使用純 HTML / CSS / JavaScript，無外部框架。</div>
+  </main>
+
+  <script>
+    const cityInput = document.getElementById("city-input");
+    const queryBtn = document.getElementById("query-btn");
+    const weatherInfo = document.getElementById("weather-info");
+    const spotInput = document.getElementById("spot-input");
+    const submitBtn = document.getElementById("submit-btn");
+
+    async function fetchWeather(cityName) {
+      // 確保加上 lang=zh-tw，強制讓氣象伺服器吐出繁體中文
+      const url = `https://wttr.in/${encodeURIComponent(cityName)}?format=j1&lang=zh-tw`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error("無法取得天氣資料");
+      }
+      return response.json();
+    }
+
+    function formatWeatherText(data) {
+      const condition = data.current_condition?.[0];
+      
+      // 核心修正：精準抓取 wttr.in 內建的繁體中文天氣描述欄位
+      const description = condition?.lang_zh_tw?.[0]?.value || condition?.weatherDesc?.[0]?.value || "無法取得天氣描述";
+      const tempC = condition?.temp_C || "--";
+      const feelsLike = condition?.FeelsLikeC || "--";
+      
+      // 只留下純人類文字，不保留任何可能被瀏覽器誤翻的 JSON 殘留標籤
+      return `當前天氣：${description}，溫度 ${tempC}°C，體感 ${feelsLike}°C`;
+    }
+
+    function setLoading(button, isLoading) {
+      button.disabled = isLoading;
+      button.textContent = isLoading ? "請稍候..." : button.dataset.originalText;
+    }
+
+    queryBtn.dataset.originalText = queryBtn.textContent;
+    submitBtn.dataset.originalText = submitBtn.textContent;
+
+    queryBtn.addEventListener("click", async () => {
+      const cityName = cityInput.value.trim();
+      if (!cityName) {
+        weatherInfo.textContent = "請先輸入城市名稱，再進行查詢。";
+        return;
+      }
+
+      setLoading(queryBtn, true);
+      weatherInfo.textContent = "查詢中，請稍候...";
+      spotInput.disabled = true;
+      submitBtn.disabled = true;
+
+      try {
+        const data = await fetchWeather(cityName);
+        const weatherText = formatWeatherText(data);
+        
+        weatherInfo.textContent = weatherText;
+        spotInput.disabled = false;
+        submitBtn.disabled = false;
+        
+        // 把乾淨的文字綁定到儲存按鈕上
+        submitBtn.dataset.weatherText = weatherText;
+      } catch (error) {
+        weatherInfo.textContent = `查詢失敗：${error.message}。請確認輸入的是英文城市名（例：Taipei）`;
+      } finally {
+        setLoading(queryBtn, false);
+      }
+    });
+
+    submitBtn.addEventListener("click", async () => {
+      const cityName = cityInput.value.trim();
+      const spotName = spotInput.value.trim();
+      const weatherText = submitBtn.dataset.weatherText || weatherInfo.textContent;
+
+      if (!cityName || !spotName) {
+        weatherInfo.textContent = "請確認城市與景點名稱皆已輸入。";
+        return;
+      }
+
+      setLoading(submitBtn, true);
+
+      const params = new URLSearchParams({
+        city: cityName,
+        spot: spotName,
+        weather: weatherText,
+      });
+
+      try {
+        await fetch(GAS_WEB_APP_URL, {
+          method: "POST",
+          mode: "no-cors",
+          body: params,
+        });
+        
+        weatherInfo.textContent = `🎉 儲存成功！已將「${spotName}」寫入試算表。`;
+        spotInput.value = "";
+      } catch (error) {
+        weatherInfo.textContent = `儲存失敗：${error.message}`;
+      } finally {
+        setLoading(submitBtn, false);
+      }
+    });
+  </script>
+</body>
+</html>
